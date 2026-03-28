@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
+  <meta name="apple-mobile-web-app-title" content="ReplayCoach">
+  <meta name="theme-color" content="#0a0c10">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>ReplayCoach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #08090c;
+      --surface: #111318;
+      --panel:   #181c24;
+      --border:  #252a38;
+      --accent:  #d4f53c;
+      --red:     #ff4e3a;
+      --teal:    #3af5c8;
+      --text:    #eef0f4;
+      --muted:   #5a6175;
+      --radius:  14px;
+    }
+
+    html, body {
+      height: 100%; width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    #app {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      height: 100dvh;
+      padding: env(safe-area-inset-top,10px) env(safe-area-inset-right,10px)
+               env(safe-area-inset-bottom,10px) env(safe-area-inset-left,10px);
+      gap: 10px;
+      transition: grid-template-columns 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* Collapsed state: sidebar hidden */
+    #app.sidebar-hidden {
+      grid-template-columns: 1fr 0px;
+      gap: 0;
+    }
+    #app.sidebar-hidden .ctrl-col {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* ── VIDEO AREA ─────────────────────────────────── */
+    .video-wrap {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* Live video — always rendering in background for capture */
+    #liveVideo {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    #liveVideo.mirror { transform: scaleX(-1); }
+
+    /* Replay canvas — sits on top, fades based on mode */
+    #replayCanvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 1;
+      transition: opacity 0.3s ease;
+    }
+    /* In live mode, canvas is hidden so live video shows through */
+    .video-wrap.show-live #replayCanvas { opacity: 0; }
+
+    /* Mode label bottom-center */
+    .mode-label {
+      position: absolute;
+      bottom: 14px; left: 50%;
+      transform: translateX(-50%);
+      font-family: 'DM Mono', monospace;
+      font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      padding: 4px 10px; border-radius: 100px;
+      white-space: nowrap; z-index: 15;
+      pointer-events: none;
+    }
+
+    /* REC badge top-left */
+    .rec-badge {
+      position: absolute;
+      top: 12px; left: 12px;
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(8,9,12,0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,78,58,0.4);
+      border-radius: 100px;
+      padding: 5px 10px;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px; letter-spacing: 2px; color: var(--red);
+      opacity: 0; transition: opacity 0.3s; z-index: 20;
+    }
+    .rec-badge.on { opacity: 1; }
+    .rec-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: blink 1.2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.2} }
+
+    /* Live/Replay toggle button — bottom-left */
+    #viewToggleBtn {
+      position: absolute;
+      bottom: 12px; left: 12px;
+      z-index: 20;
+      display: flex; align-items: center; gap: 7px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(8,9,12,0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: 100px;
+      padding: 7px 14px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+      color: rgba(255,255,255,0.6);
+      cursor: pointer;
+      transition: all 0.2s;
+      opacity: 0; pointer-events: none; /* hidden until recording */
+    }
+    #viewToggleBtn.visible { opacity: 1; pointer-events: auto; }
+    #viewToggleBtn:active { transform: scale(0.95); }
+
+    /* Indicator dot inside toggle button */
+    #viewToggleBtn .vdot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--teal); flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    /* In delayed mode: accent colour */
+    #viewToggleBtn.delayed .vdot { background: var(--accent); }
+    #viewToggleBtn.delayed {
+      color: var(--accent);
+      border-color: rgba(212,245,60,0.4);
+      background: rgba(212,245,60,0.1);
+    }
+
+    /* Buffer bar — full width at very bottom */
+    .buffer-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px; z-index: 25; pointer-events: none;
+    }
+    .buffer-bg { width: 100%; height: 100%; background: rgba(255,255,255,0.06); }
+    .buffer-fg {
+      position: absolute; top: 0; left: 0;
+      height: 100%; width: 0%;
+      background: var(--teal);
+      box-shadow: 0 0 6px var(--teal);
+      transition: width 0.25s ease;
+    }
+
+    /* Buffering overlay — only shown while filling */
+    .buf-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      background: rgba(8,9,12,0.72);
+      z-index: 18; transition: opacity 0.4s;
+    }
+    .buf-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .buf-spinner {
+      width: 34px; height: 34px;
+      border: 2px solid rgba(255,255,255,0.08);
+      border-top-color: var(--teal);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .buf-pct {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 30px; letter-spacing: 2px; color: var(--teal);
+    }
+    .buf-txt {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px; letter-spacing: 1.5px; color: var(--muted);
+    }
+
+    /* Sidebar toggle button — floats over video top-right */
+    #toggleBtn {
+      position: absolute;
+      top: 12px; right: 12px;
+      z-index: 30;
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(8,9,12,0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: rgba(255,255,255,0.55);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+      flex-shrink: 0;
+    }
+    #toggleBtn:active {
+      transform: scale(0.9);
+    }
+    #toggleBtn:hover {
+      background: rgba(212,245,60,0.15);
+      border-color: rgba(212,245,60,0.4);
+      color: var(--accent);
+    }
+    /* Arrow icon flips when sidebar is open */
+    #toggleBtn .arrow {
+      display: block;
+      transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    /* When sidebar visible: arrow points right (→ to close) */
+    #toggleBtn .arrow { transform: rotate(0deg); }
+    /* When sidebar hidden: arrow points left (← to open) */
+    #app.sidebar-hidden #toggleBtn .arrow { transform: rotate(180deg); }
+
+    /* Start overlay */
+    .start-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(8,9,12,0.78);
+      z-index: 15; transition: opacity 0.4s;
+    }
+    .start-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .start-msg {
+      text-align: center;
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+    .start-msg svg { opacity: 0.28; }
+    .start-msg p { color: var(--muted); font-size: 14px; font-weight: 300; }
+
+    /* ── CONTROLS ───────────────────────────────────── */
+    .ctrl-col {
+      display: flex; flex-direction: column; gap: 10px;
+      overflow: hidden;
+      transition: opacity 0.25s ease;
+    }
+
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 24px; letter-spacing: 3px;
+      padding: 4px 2px 0; flex-shrink: 0;
+    }
+    .logo em { color: var(--accent); font-style: normal; }
+
+    .status-row { display: flex; align-items: center; gap: 8px; }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 100px;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+      border: 1px solid var(--border); color: var(--muted);
+      transition: all 0.3s;
+    }
+    .pill.rec  { color:var(--red);  border-color:rgba(255,78,58,0.5);  background:rgba(255,78,58,0.07); }
+    .pill.live { color:var(--teal); border-color:rgba(58,245,200,0.5); background:rgba(58,245,200,0.07); }
+    .pill-dot  { width:5px; height:5px; border-radius:50%; background:currentColor; }
+    .pill.rec .pill-dot { animation: blink 1.2s infinite; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px; flex-shrink: 0;
+    }
+    .card-lbl {
+      font-family: 'DM Mono', monospace;
+      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 12px;
+    }
+
+    .delay-row {
+      display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px;
+    }
+    .delay-num {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 60px; line-height: 1; color: var(--accent);
+    }
+    .delay-unit {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px; color: var(--muted); letter-spacing: 1px;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%; height: 5px;
+      border-radius: 3px; background: transparent;
+      outline: none; cursor: pointer; margin-bottom: 10px;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 5px; border-radius: 3px; background: var(--border);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); margin-top: -10.5px;
+      box-shadow: 0 0 0 3px rgba(212,245,60,0.15);
+      transition: box-shadow 0.2s; cursor: grab;
+    }
+    input[type="range"]:active::-webkit-slider-thumb {
+      box-shadow: 0 0 0 7px rgba(212,245,60,0.18); cursor: grabbing;
+    }
+
+    .presets {
+      display: grid; grid-template-columns: repeat(6,1fr); gap: 5px;
+    }
+    .p-btn {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--muted);
+      font-family: 'DM Mono', monospace; font-size: 11px;
+      padding: 6px 2px; cursor: pointer; text-align: center;
+      transition: all 0.15s;
+    }
+    .p-btn:active { transform: scale(0.92); }
+    .p-btn.on {
+      background: rgba(212,245,60,0.1);
+      border-color: rgba(212,245,60,0.5);
+      color: var(--accent);
+    }
+
+    .cam-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .cam-btn {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--muted);
+      font-family: 'DM Mono', monospace; font-size: 10px;
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 10px 6px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: all 0.15s;
+    }
+    .cam-btn:active { transform: scale(0.95); }
+    .cam-btn.on {
+      background: rgba(58,245,200,0.08);
+      border-color: rgba(58,245,200,0.4);
+      color: var(--teal);
+    }
+
+    .note {
+      font-size: 11px; color: var(--muted); line-height: 1.6;
+      padding: 10px 12px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    }
+
+    .btn-main {
+      border: none; border-radius: var(--radius);
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px; letter-spacing: 3px;
+      cursor: pointer; height: 60px; margin-top: auto;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: all 0.15s;
+      position: relative; overflow: hidden;
+    }
+    .btn-main:active { transform: scale(0.97); }
+
+    #startBtn { background: var(--accent); color: #08090c; }
+    #startBtn.on { background: var(--red); color: #fff; }
+    #startBtn.on::after {
+      content:''; position:absolute; inset:0;
+      background: rgba(255,255,255,0.07);
+      animation: shimmer 2s infinite;
+    }
+    @keyframes shimmer { 0%,100%{opacity:0} 50%{opacity:1} }
+
+    #permOverlay {
+      position:fixed; inset:0; background:var(--bg);
+      display:none; flex-direction:column;
+      align-items:center; justify-content:center;
+      gap:16px; padding:40px; text-align:center; z-index:999;
+    }
+    #permOverlay h2 { font-family:'Bebas Neue',sans-serif; font-size:36px; color:var(--red); letter-spacing:2px; }
+    #permOverlay p  { color:var(--muted); line-height:1.7; max-width:380px; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ VIDEO ════════════════════════════════════════════════ -->
+  <div class="video-wrap show-live" id="videoWrap">
+
+    <video id="liveVideo" autoplay muted playsinline></video>
+    <canvas id="replayCanvas"></canvas>
+
+    <div class="rec-badge" id="recBadge"><div class="rec-dot"></div>REC</div>
+
+    <!-- Live/Delay toggle — bottom left -->
+    <button id="viewToggleBtn">
+      <span class="vdot"></span>
+      <span id="viewToggleLabel">VERTRAAGD</span>
+    </button>
+
+    <!-- Current mode label — bottom center -->
+    <div class="mode-label" id="modeLabel">LIVE</div>
+
+    <div class="buffer-bar">
+      <div class="buffer-bg"></div>
+      <div class="buffer-fg" id="bufBar"></div>
+    </div>
+
+    <!-- Buffering overlay -->
+    <div class="buf-overlay hidden" id="bufOverlay">
+      <div class="buf-spinner"></div>
+      <div class="buf-pct" id="bufPct">0%</div>
+      <div class="buf-txt">Buffer opbouwen…</div>
+    </div>
+
+    <!-- Sidebar toggle — top right -->
+    <button id="toggleBtn" title="Instellingen tonen/verbergen">
+      <svg class="arrow" width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <div class="start-overlay" id="startOverlay">
+      <div class="start-msg">
+        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+          <circle cx="26" cy="26" r="24" stroke="white" stroke-width="1.5"/>
+          <circle cx="26" cy="26" r="10" fill="white" opacity="0.4"/>
+        </svg>
+        <p>Druk op START om te beginnen</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ CONTROLS ════════════════════════════════════════════ -->
+  <div class="ctrl-col">
+
+    <div class="logo">Replay<em>Coach</em></div>
+
+    <div class="status-row">
+      <div class="pill" id="statusPill">
+        <div class="pill-dot"></div>
+        <span id="statusTxt">Klaar</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-lbl">Vertraging</div>
+      <div class="delay-row">
+        <div class="delay-num" id="delayNum">5</div>
+        <div class="delay-unit">seconden</div>
+      </div>
+      <input type="range" id="slider" min="3" max="30" value="5" step="1">
+      <div class="presets">
+        <button class="p-btn" data-v="3">3s</button>
+        <button class="p-btn on" data-v="5">5s</button>
+        <button class="p-btn" data-v="8">8s</button>
+        <button class="p-btn" data-v="10">10s</button>
+        <button class="p-btn" data-v="15">15s</button>
+        <button class="p-btn" data-v="20">20s</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-lbl">Camera</div>
+      <div class="cam-grid">
+        <button class="cam-btn" id="camFront">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="8" cy="6" r="3"/>
+            <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6H2z"/>
+          </svg>
+          Voorkant
+        </button>
+        <button class="cam-btn on" id="camBack">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+            <rect x="1" y="4" width="14" height="10" rx="2"/>
+            <circle cx="8" cy="9" r="3"/>
+            <path d="M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1"/>
+          </svg>
+          Achterkant
+        </button>
+      </div>
+    </div>
+
+    <div class="note">
+      Na het starten zie je direct het vertraagde beeld. Gebruik de knop linksonder om te wisselen tussen <strong>live</strong> en <strong id="noteDelay">5</strong>s vertraagd.
+    </div>
+
+    <button class="btn-main" id="startBtn">▶ START</button>
+
+  </div>
+</div>
+
+<div id="permOverlay">
+  <h2>Geen cameratoegang</h2>
+  <p>Ga naar <strong>Instellingen → Safari → Camera</strong> en sta toegang toe. Herlaad daarna de pagina.</p>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  ReplayCoach — iOS-safe frame buffer
+//
+//  iOS Safari crasht bij grote canvas buffers. Oplossing:
+//  - Capture op max 640×360 (klein, maar meer dan genoeg voor replay)
+//  - Frames opslaan als kleine canvas elementen (geen ImageBitmap,
+//    geen getImageData — gewoon 2D canvas drawImage)
+//  - Maximaal 32 seconden buffer = 32s × 30fps × 640×360 × 4 bytes
+//    = ~88MB — dat overleeft iOS Safari wel
+//  - Display canvas schaalt de kleine frame terug op naar fullscreen
+// ═══════════════════════════════════════════════════════════════
+
+const $ = id => document.getElementById(id);
+
+const liveVideo       = $('liveVideo');
+const replayCanvas    = $('replayCanvas');
+const videoWrap       = $('videoWrap');
+const startBtn        = $('startBtn');
+const camFrontBtn     = $('camFront');
+const camBackBtn      = $('camBack');
+const slider          = $('slider');
+const delayNum        = $('delayNum');
+const noteDelay       = $('noteDelay');
+const bufBar          = $('bufBar');
+const bufPct          = $('bufPct');
+const bufOverlay      = $('bufOverlay');
+const recBadge        = $('recBadge');
+const viewToggleBtn   = $('viewToggleBtn');
+const viewToggleLabel = $('viewToggleLabel');
+const modeLabel       = $('modeLabel');
+const statusPill      = $('statusPill');
+const statusTxt       = $('statusTxt');
+const startOverlay    = $('startOverlay');
+const permOverlay     = $('permOverlay');
+const app             = $('app');
+const toggleBtn       = $('toggleBtn');
+
+// Display canvas (fullscreen, shows delayed frame scaled up)
+const rctx = replayCanvas.getContext('2d');
+
+// ── Capture resolution — small to keep memory under iOS limit ──
+// 640×360 = 4× minder pixels dan 1280×720, 9× minder dan 1920×1080
+// Voldoende kwaliteit voor replay op een scherm op ~3m afstand
+const CAP_W = 640;
+const CAP_H = 360;
+
+// Single reusable capture canvas — we tekenen hier elk frame op
+// en lezen het direct terug. Geen array van canvassen.
+const capCv  = document.createElement('canvas');
+capCv.width  = CAP_W;
+capCv.height = CAP_H;
+const capCtx = capCv.getContext('2d', { willReadFrequently: false, alpha: false });
+
+// ── State ──────────────────────────────────────────────────────
+let stream       = null;
+let facingMode   = 'environment';
+let delayMs      = 5000;
+let running      = false;
+let rafId        = null;
+let showingLive  = true;
+let bufferReady  = false;
+
+// Frame buffer: { data: Uint8ClampedArray (raw RGBA), t: number }[]
+// We gebruiken Uint8ClampedArray (ruwe pixels van de kleine canvas)
+// Dit is sneller dan ImageBitmap op iOS en geen GPU geheugen
+// 640×360×4 = 921.600 bytes (~0.9MB) per frame
+// 30fps × 32s = 960 frames × 0.9MB = ~880MB — TE VEEL
+//
+// Daarom: 15fps ipv 30fps, en max 32s → 480 frames × 0.9MB = ~440MB
+// Nog steeds te veel. Laten we 10fps doen:
+// 10fps × 32s = 320 frames × 0.9MB = ~288MB — acceptabel op moderne iPad
+//
+// Of beter: we slaan GEEN pixels op maar gebruiken een andere aanpak:
+// MediaRecorder op LAGE kwaliteit + seekable blob per segment.
+// Maar dat had ook problemen. 
+//
+// Echte fix: sla frames op als kleine JPEG blobs via canvas.toBlob()
+// 640×360 JPEG quality=0.5 ≈ 15-30KB per frame
+// 10fps × 32s = 320 frames × 20KB = ~6MB totaal — triviaal
+//
+// Nadeel: toBlob is async. We gebruiken toDataURL (sync) met lage kwaliteit:
+// quality=0.4 → ~10-20KB per frame, 320 frames = ~5MB
+
+const FPS            = 15;          // 15fps: goed genoeg voor sportreplay
+const FRAME_INTERVAL = 1000 / FPS;
+const MAX_BUFFER_S   = 32;
+let lastCapT         = 0;
+
+// Frame buffer: { dataUrl: string, t: number }[]
+// DataURL (JPEG) = klein, CPU-geheugen, geen GPU limiet
+let frames = [];
+
+// Preload image voor display (hergebruikt)
+const displayImg = new Image();
+
+// ── Camera ─────────────────────────────────────────────────────
+async function startCamera(facing) {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: facing,
+        // Vraag 720p — meer heeft geen zin want we downsamplen toch
+        width:     { ideal: 1280, max: 1280 },
+        height:    { ideal: 720,  max: 720  },
+        frameRate: { ideal: 30, min: 15 }
+      },
+      audio: false
+    });
+    liveVideo.srcObject = stream;
+    liveVideo.classList.toggle('mirror', facing === 'user');
+    facingMode = facing;
+  } catch(e) {
+    permOverlay.style.display = 'flex';
+  }
+}
+
+camFrontBtn.addEventListener('click', async () => {
+  if (facingMode === 'user') return;
+  const was = running;
+  if (was) stopLoop();
+  camFrontBtn.classList.add('on');
+  camBackBtn.classList.remove('on');
+  await startCamera('user');
+  if (was) startLoop();
+});
+
+camBackBtn.addEventListener('click', async () => {
+  if (facingMode === 'environment') return;
+  const was = running;
+  if (was) stopLoop();
+  camBackBtn.classList.add('on');
+  camFrontBtn.classList.remove('on');
+  await startCamera('environment');
+  if (was) startLoop();
+});
+
+// ── Delay ──────────────────────────────────────────────────────
+function setDelay(v) {
+  v = parseInt(v);
+  delayMs = v * 1000;
+  slider.value = v;
+  delayNum.textContent = v;
+  noteDelay.textContent = v;
+  if (running && bufferReady) {
+    const bufSecs = frames.length > 1
+      ? (frames[frames.length-1].t - frames[0].t) / 1000 : 0;
+    if (bufSecs < v * 0.98) {
+      bufferReady = false;
+      setView(true);
+      bufOverlay.classList.remove('hidden');
+      bufPct.textContent = '0%';
+    }
+  }
+  document.querySelectorAll('.p-btn').forEach(b =>
+    b.classList.toggle('on', parseInt(b.dataset.v) === v)
+  );
+}
+
+slider.addEventListener('input', () => setDelay(slider.value));
+document.querySelectorAll('.p-btn').forEach(b =>
+  b.addEventListener('click', () => setDelay(b.dataset.v))
+);
+
+// ── View toggle ────────────────────────────────────────────────
+function setView(live) {
+  showingLive = live;
+  videoWrap.classList.toggle('show-live', live);
+  modeLabel.textContent = live ? 'LIVE' : `${delayMs/1000}s DELAY`;
+  viewToggleLabel.textContent = live ? 'VERTRAAGD' : 'LIVE';
+  viewToggleBtn.classList.toggle('delayed', !live);
+}
+
+viewToggleBtn.addEventListener('click', () => {
+  if (!bufferReady) return;
+  setView(!showingLive);
+});
+
+// ── RAF loop ───────────────────────────────────────────────────
+function loop(now) {
+  if (!running) return;
+  rafId = requestAnimationFrame(loop);
+
+  if (liveVideo.readyState < 2) return;
+
+  // ① Capture frame at ~15fps as JPEG dataURL
+  if (now - lastCapT >= FRAME_INTERVAL) {
+    capCtx.save();
+    if (facingMode === 'user') {
+      capCtx.translate(CAP_W, 0);
+      capCtx.scale(-1, 1);
+    }
+    capCtx.drawImage(liveVideo, 0, 0, CAP_W, CAP_H);
+    capCtx.restore();
+
+    // toDataURL is sync en snel op kleine canvas
+    const dataUrl = capCv.toDataURL('image/jpeg', 0.5);
+    frames.push({ dataUrl, t: now });
+
+    // Prune oude frames
+    const cutoff = now - MAX_BUFFER_S * 1000;
+    while (frames.length > 1 && frames[0].t < cutoff) {
+      frames.shift();
+    }
+
+    lastCapT = now;
+  }
+
+  // ② Buffer voortgang
+  const bufSecs = frames.length > 1
+    ? (frames[frames.length-1].t - frames[0].t) / 1000 : 0;
+  const needed = delayMs / 1000;
+  const pct    = Math.min(100, Math.round((bufSecs / needed) * 100));
+  bufBar.style.width = pct + '%';
+
+  if (!bufferReady) {
+    bufPct.textContent = pct + '%';
+    if (bufSecs >= needed * 0.98) {
+      bufferReady = true;
+      bufOverlay.classList.add('hidden');
+      setView(false);
+      setStatus('live', `${needed}s delay actief`);
+    }
+    return;
+  }
+
+  // ③ Teken vertraagd frame op display canvas
+  if (!showingLive) {
+    const targetT = now - delayMs;
+    const frame   = findClosest(targetT);
+    if (frame && frame.dataUrl !== displayImg._lastSrc) {
+      displayImg._lastSrc = frame.dataUrl;
+      displayImg.src = frame.dataUrl;
+    }
+  }
+}
+
+// Teken displayImg op canvas zodra hij geladen is
+displayImg.onload = function() {
+  if (!showingLive && running) {
+    rctx.drawImage(displayImg, 0, 0, replayCanvas.width, replayCanvas.height);
+  }
+};
+
+// Binary search
+function findClosest(targetT) {
+  if (!frames.length) return null;
+  let lo = 0, hi = frames.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid].t < targetT) lo = mid + 1;
+    else hi = mid;
+  }
+  return frames[lo];
+}
+
+// ── Start / Stop ───────────────────────────────────────────────
+function startLoop() {
+  frames      = [];
+  lastCapT    = 0;
+  bufferReady = false;
+  running     = true;
+  rafId       = requestAnimationFrame(loop);
+
+  startBtn.textContent = '⏹ STOP';
+  startBtn.classList.add('on');
+  recBadge.classList.add('on');
+  startOverlay.classList.add('hidden');
+  viewToggleBtn.classList.add('visible');
+  setView(true);
+  bufOverlay.classList.remove('hidden');
+  bufPct.textContent = '0%';
+  setStatus('rec', 'Buffer opbouwen…');
+}
+
+function stopLoop() {
+  running = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  frames      = [];
+  bufferReady = false;
+
+  startBtn.textContent = '▶ START';
+  startBtn.classList.remove('on');
+  recBadge.classList.remove('on');
+  viewToggleBtn.classList.remove('visible');
+  startOverlay.classList.remove('hidden');
+  bufOverlay.classList.add('hidden');
+  bufBar.style.width = '0%';
+  setView(true);
+  rctx.clearRect(0, 0, replayCanvas.width, replayCanvas.height);
+  setStatus('', 'Klaar');
+}
+
+startBtn.addEventListener('click', () => running ? stopLoop() : startLoop());
+
+function setStatus(mode, label) {
+  statusPill.className = 'pill' + (mode ? ' ' + mode : '');
+  statusTxt.textContent = label;
+}
+
+// ── Resize canvas to match display ─────────────────────────────
+function resizeCanvas() {
+  const rect = replayCanvas.getBoundingClientRect();
+  if (replayCanvas.width !== Math.round(rect.width) || 
+      replayCanvas.height !== Math.round(rect.height)) {
+    replayCanvas.width  = Math.round(rect.width)  * window.devicePixelRatio;
+    replayCanvas.height = Math.round(rect.height) * window.devicePixelRatio;
+  }
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ── Sidebar toggle ─────────────────────────────────────────────
+toggleBtn.addEventListener('click', () => app.classList.toggle('sidebar-hidden'));
+
+// ── Wake Lock ──────────────────────────────────────────────────
+let wakeLock = null;
+async function keepAwake() {
+  try {
+    if ('wakeLock' in navigator)
+      wakeLock = await navigator.wakeLock.request('screen');
+  } catch(e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (running && document.visibilityState === 'visible') keepAwake();
+});
+startBtn.addEventListener('click', () => { if (!running) keepAwake(); });
+
+// ── Service Worker ─────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () =>
+    navigator.serviceWorker.register('./sw.js').catch(() => {})
+  );
+}
+
+// ── Init ───────────────────────────────────────────────────────
+startCamera('environment');
+setDelay(5);
+</script>
+</body>
+</html>
