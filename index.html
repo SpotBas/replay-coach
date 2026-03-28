@@ -552,17 +552,13 @@ const toggleBtn       = $('toggleBtn');
 // Display canvas (fullscreen, shows delayed frame scaled up)
 const rctx = replayCanvas.getContext('2d');
 
-// ── Capture resolution — small to keep memory under iOS limit ──
-// 640×360 = 4× minder pixels dan 1280×720, 9× minder dan 1920×1080
-// Voldoende kwaliteit voor replay op een scherm op ~3m afstand
-const CAP_W = 1280;
-const CAP_H = 720;
+// Maximale capture-dimensie (langste zijde) — gemaximeerd voor iOS geheugen
+const CAP_MAX = 1280;
 
-// Single reusable capture canvas — we tekenen hier elk frame op
-// en lezen het direct terug. Geen array van canvassen.
+// Capture canvas — afmetingen worden dynamisch afgestemd op de videobron
 const capCv  = document.createElement('canvas');
-capCv.width  = CAP_W;
-capCv.height = CAP_H;
+capCv.width  = CAP_MAX;
+capCv.height = CAP_MAX;
 const capCtx = capCv.getContext('2d', { willReadFrequently: false, alpha: false });
 
 // ── State ──────────────────────────────────────────────────────
@@ -699,24 +695,22 @@ function loop(now) {
 
   // ① Capture frame at ~15fps as JPEG dataURL
   if (now - lastCapT >= FRAME_INTERVAL) {
-    // Contain-stijl capture: volledig camera beeld bewaren (geen bijsnijden)
-    const vw = liveVideo.videoWidth  || CAP_W;
-    const vh = liveVideo.videoHeight || CAP_H;
-    const capAR = CAP_W / CAP_H;
-    const vidAR = vw / vh;
-    let dsx, dsy, dsw, dsh;
-    if (vidAR > capAR) {
-      dsw = CAP_W; dsh = CAP_W / vidAR; dsx = 0; dsy = (CAP_H - dsh) / 2;
-    } else {
-      dsh = CAP_H; dsw = CAP_H * vidAR; dsx = (CAP_W - dsw) / 2; dsy = 0;
+    // Capture: volledig cameraframe opslaan op native verhouding (gemaximeerd)
+    const vw = liveVideo.videoWidth  || CAP_MAX;
+    const vh = liveVideo.videoHeight || CAP_MAX;
+    const scale = Math.min(1, CAP_MAX / Math.max(vw, vh));
+    const capW  = Math.round(vw * scale);
+    const capH  = Math.round(vh * scale);
+    if (capCv.width !== capW || capCv.height !== capH) {
+      capCv.width  = capW;
+      capCv.height = capH;
     }
-    capCtx.clearRect(0, 0, CAP_W, CAP_H);
     capCtx.save();
     if (facingMode === 'user') {
-      capCtx.translate(CAP_W, 0);
+      capCtx.translate(capW, 0);
       capCtx.scale(-1, 1);
     }
-    capCtx.drawImage(liveVideo, 0, 0, vw, vh, dsx, dsy, dsw, dsh);
+    capCtx.drawImage(liveVideo, 0, 0, capW, capH);
     capCtx.restore();
 
     // toDataURL is sync en snel op kleine canvas
