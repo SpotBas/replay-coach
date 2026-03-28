@@ -555,8 +555,8 @@ const rctx = replayCanvas.getContext('2d');
 // ── Capture resolution — small to keep memory under iOS limit ──
 // 640×360 = 4× minder pixels dan 1280×720, 9× minder dan 1920×1080
 // Voldoende kwaliteit voor replay op een scherm op ~3m afstand
-const CAP_W = 640;
-const CAP_H = 360;
+const CAP_W = 1280;
+const CAP_H = 720;
 
 // Single reusable capture canvas — we tekenen hier elk frame op
 // en lezen het direct terug. Geen array van canvassen.
@@ -719,7 +719,7 @@ function loop(now) {
     capCtx.restore();
 
     // toDataURL is sync en snel op kleine canvas
-    const dataUrl = capCv.toDataURL('image/jpeg', 0.5);
+    const dataUrl = capCv.toDataURL('image/jpeg', 0.75);
     frames.push({ dataUrl, t: now });
 
     // Prune oude frames
@@ -763,6 +763,7 @@ function loop(now) {
 // Teken displayImg op canvas zodra hij geladen is (object-fit: cover gedrag)
 displayImg.onload = function() {
   if (!showingLive && running) {
+    resizeCanvas();
     const cw = replayCanvas.width;
     const ch = replayCanvas.height;
     const iw = displayImg.naturalWidth;
