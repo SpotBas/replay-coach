@@ -786,6 +786,7 @@ function startLoop() {
   bufOverlay.classList.remove('hidden');
   bufPct.textContent = '0%';
   setStatus('rec', 'Buffer opbouwen…');
+  app.classList.add('sidebar-hidden');
 }
 
 function stopLoop() {
@@ -823,6 +824,7 @@ function resizeCanvas() {
   }
 }
 window.addEventListener('resize', resizeCanvas);
+app.addEventListener('transitionend', resizeCanvas);
 resizeCanvas();
 
 // ── Sidebar toggle ─────────────────────────────────────────────
