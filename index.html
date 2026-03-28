@@ -591,7 +591,7 @@ let bufferReady  = false;
 // Nadeel: toBlob is async. We gebruiken toDataURL (sync) met lage kwaliteit:
 // quality=0.4 → ~10-20KB per frame, 320 frames = ~5MB
 
-const FPS            = 15;          // 15fps: goed genoeg voor sportreplay
+const FPS            = 30;          // 30fps: vloeiend voor sportreplay
 const FRAME_INTERVAL = 1000 / FPS;
 const MAX_BUFFER_S   = 32;
 let lastCapT         = 0;
