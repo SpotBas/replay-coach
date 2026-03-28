@@ -360,6 +360,13 @@
       color: var(--teal);
     }
 
+    .qual-info {
+      margin-top: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 9px; letter-spacing: 1px; color: var(--muted);
+      text-align: center;
+    }
+
     .note {
       font-size: 11px; color: var(--muted); line-height: 1.6;
       padding: 10px 12px;
@@ -497,6 +504,16 @@
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-lbl">Kwaliteit</div>
+      <div class="presets" id="qualPresets">
+        <button class="p-btn" data-max="854"  data-q="0.60" style="grid-column:span 2">Normaal</button>
+        <button class="p-btn on" data-max="1280" data-q="0.75" style="grid-column:span 2">Hoog</button>
+        <button class="p-btn" data-max="1920" data-q="0.85" style="grid-column:span 2">Max</button>
+      </div>
+      <div class="qual-info" id="qualInfo"></div>
+    </div>
+
     <div class="note">
       Na het starten zie je direct het vertraagde beeld. Gebruik de knop linksonder om te wisselen tussen <strong>live</strong> en <strong id="noteDelay">5</strong>s vertraagd.
     </div>
@@ -552,8 +569,9 @@ const toggleBtn       = $('toggleBtn');
 // Display canvas (fullscreen, shows delayed frame scaled up)
 const rctx = replayCanvas.getContext('2d');
 
-// Maximale capture-dimensie (langste zijde) — gemaximeerd voor iOS geheugen
-const CAP_MAX = 1280;
+// Kwaliteitsinstellingen — aanpasbaar via menu
+let capMax     = 1280;
+let jpegQuality = 0.75;
 
 // Capture canvas — afmetingen worden dynamisch afgestemd op de videobron
 const capCv  = document.createElement('canvas');
@@ -696,9 +714,9 @@ function loop(now) {
   // ① Capture frame at ~15fps as JPEG dataURL
   if (now - lastCapT >= FRAME_INTERVAL) {
     // Capture: volledig cameraframe opslaan op native verhouding (gemaximeerd)
-    const vw = liveVideo.videoWidth  || CAP_MAX;
-    const vh = liveVideo.videoHeight || CAP_MAX;
-    const scale = Math.min(1, CAP_MAX / Math.max(vw, vh));
+    const vw = liveVideo.videoWidth  || capMax;
+    const vh = liveVideo.videoHeight || capMax;
+    const scale = Math.min(1, capMax / Math.max(vw, vh));
     const capW  = Math.round(vw * scale);
     const capH  = Math.round(vh * scale);
     if (capCv.width !== capW || capCv.height !== capH) {
@@ -714,7 +732,7 @@ function loop(now) {
     capCtx.restore();
 
     // toDataURL is sync en snel op kleine canvas
-    const dataUrl = capCv.toDataURL('image/jpeg', 0.75);
+    const dataUrl = capCv.toDataURL('image/jpeg', jpegQuality);
     frames.push({ dataUrl, t: now });
 
     // Prune oude frames
@@ -853,6 +871,25 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 app.addEventListener('transitionend', resizeCanvas);
 resizeCanvas();
+
+// ── Kwaliteit ──────────────────────────────────────────────────
+const qualInfo = document.getElementById('qualInfo');
+function updateQualInfo() {
+  const frameMB = (capMax * capMax * jpegQuality * 0.0001).toFixed(1);
+  const totalMB = Math.round(30 * 32 * parseFloat(frameMB) / 10);
+  qualInfo.textContent = `~${frameMB}MB/frame · buffer ~${totalMB}MB`;
+}
+document.querySelectorAll('#qualPresets .p-btn').forEach(b =>
+  b.addEventListener('click', () => {
+    capMax      = parseInt(b.dataset.max);
+    jpegQuality = parseFloat(b.dataset.q);
+    document.querySelectorAll('#qualPresets .p-btn').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    updateQualInfo();
+    if (running) { stopLoop(); startLoop(); }
+  })
+);
+updateQualInfo();
 
 // ── Sidebar toggle ─────────────────────────────────────────────
 toggleBtn.addEventListener('click', () => app.classList.toggle('sidebar-hidden'));
