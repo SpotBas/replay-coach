@@ -699,23 +699,24 @@ function loop(now) {
 
   // ① Capture frame at ~15fps as JPEG dataURL
   if (now - lastCapT >= FRAME_INTERVAL) {
-    // Cover-stijl capture: zelfde crop als object-fit:cover op live video
+    // Contain-stijl capture: volledig camera beeld bewaren (geen bijsnijden)
     const vw = liveVideo.videoWidth  || CAP_W;
     const vh = liveVideo.videoHeight || CAP_H;
     const capAR = CAP_W / CAP_H;
     const vidAR = vw / vh;
-    let vsx, vsy, vsw, vsh;
+    let dsx, dsy, dsw, dsh;
     if (vidAR > capAR) {
-      vsh = vh; vsw = vh * capAR; vsx = (vw - vsw) / 2; vsy = 0;
+      dsw = CAP_W; dsh = CAP_W / vidAR; dsx = 0; dsy = (CAP_H - dsh) / 2;
     } else {
-      vsw = vw; vsh = vw / capAR; vsx = 0; vsy = (vh - vsh) / 2;
+      dsh = CAP_H; dsw = CAP_H * vidAR; dsx = (CAP_W - dsw) / 2; dsy = 0;
     }
+    capCtx.clearRect(0, 0, CAP_W, CAP_H);
     capCtx.save();
     if (facingMode === 'user') {
       capCtx.translate(CAP_W, 0);
       capCtx.scale(-1, 1);
     }
-    capCtx.drawImage(liveVideo, vsx, vsy, vsw, vsh, 0, 0, CAP_W, CAP_H);
+    capCtx.drawImage(liveVideo, 0, 0, vw, vh, dsx, dsy, dsw, dsh);
     capCtx.restore();
 
     // toDataURL is sync en snel op kleine canvas
