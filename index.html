@@ -760,7 +760,7 @@ function loop(now) {
   }
 }
 
-// Teken displayImg op canvas zodra hij geladen is (object-fit: cover gedrag)
+// Teken displayImg op canvas — object-fit: contain (volledig beeld, geen bijsnijden)
 displayImg.onload = function() {
   if (!showingLive && running) {
     resizeCanvas();
@@ -770,21 +770,22 @@ displayImg.onload = function() {
     const ih = displayImg.naturalHeight;
     const cAR = cw / ch;
     const iAR = iw / ih;
-    let sx, sy, sw, sh;
+    let dw, dh, dx, dy;
     if (iAR > cAR) {
-      // bron breder dan canvas → bijsnijden links/rechts
-      sh = ih;
-      sw = ih * cAR;
-      sx = (iw - sw) / 2;
-      sy = 0;
+      // beeld breder dan canvas → breedte vullen, boven/onder zwart
+      dw = cw;
+      dh = cw / iAR;
+      dx = 0;
+      dy = (ch - dh) / 2;
     } else {
-      // bron smaller dan canvas → bijsnijden boven/onder
-      sw = iw;
-      sh = iw / cAR;
-      sx = 0;
-      sy = (ih - sh) / 2;
+      // beeld smaller dan canvas → hoogte vullen, links/rechts zwart
+      dh = ch;
+      dw = ch * iAR;
+      dx = (cw - dw) / 2;
+      dy = 0;
     }
-    rctx.drawImage(displayImg, sx, sy, sw, sh, 0, 0, cw, ch);
+    rctx.clearRect(0, 0, cw, ch);
+    rctx.drawImage(displayImg, 0, 0, iw, ih, dx, dy, dw, dh);
   }
 };
 
