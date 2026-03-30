@@ -1,4 +1,4 @@
-const CACHE_NAME = 'replaycoach-v1';
+const CACHE_NAME = 'replaycoach-v2';
 const ASSETS = [
   './index.html',
   './manifest.json'
