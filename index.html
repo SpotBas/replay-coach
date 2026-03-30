@@ -473,7 +473,7 @@
         <div class="delay-unit">seconden</div>
       </div>
       <input type="range" id="slider" min="3" max="30" value="5" step="1">
-      <div class="presets">
+      <div class="presets" id="delayPresets">
         <button class="p-btn" data-v="3">3s</button>
         <button class="p-btn on" data-v="5">5s</button>
         <button class="p-btn" data-v="8">8s</button>
@@ -575,8 +575,8 @@ let jpegQuality = 0.75;
 
 // Capture canvas — afmetingen worden dynamisch afgestemd op de videobron
 const capCv  = document.createElement('canvas');
-capCv.width  = CAP_MAX;
-capCv.height = CAP_MAX;
+capCv.width  = capMax;
+capCv.height = capMax;
 const capCtx = capCv.getContext('2d', { willReadFrequently: false, alpha: false });
 
 // ── State ──────────────────────────────────────────────────────
@@ -680,7 +680,7 @@ function setDelay(v) {
       bufPct.textContent = '0%';
     }
   }
-  document.querySelectorAll('.p-btn').forEach(b =>
+  document.querySelectorAll('#delayPresets .p-btn').forEach(b =>
     b.classList.toggle('on', parseInt(b.dataset.v) === v)
   );
 }
