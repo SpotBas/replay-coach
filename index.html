@@ -686,7 +686,7 @@ function setDelay(v) {
 }
 
 slider.addEventListener('input', () => setDelay(slider.value));
-document.querySelectorAll('.p-btn').forEach(b =>
+document.querySelectorAll('#delayPresets .p-btn').forEach(b =>
   b.addEventListener('click', () => setDelay(b.dataset.v))
 );
 
